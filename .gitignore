@@ -4,11 +4,15 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # User-specific files
+db
 *.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
+*.vcxproj* 
+*.sln
+*.exe
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -361,3 +365,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/lim
+/lim
