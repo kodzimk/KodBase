@@ -367,3 +367,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /lim
 /lim
+/MiniDatabase.vcxproj
+/MiniDatabase.vcxproj.filters
