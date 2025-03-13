@@ -1,7 +1,16 @@
 #ifndef KODI_H
 #define KODI_H
 
-#define _GNU_SOURCE
+#ifdef _WIN32
+#include <direct.h>
+// MSDN recommends against using getcwd & chdir names
+#define cwd _getcwd
+#define cd _chdir
+#else
+#include "unistd.h"
+#define cwd getcwd
+#define cd chdir
+#endif
 
 #define SV_IMPLEMENTATION
 #include"sv.h"
@@ -12,7 +21,6 @@
 #include<string.h>
 #include<ctype.h>
 #include<errno.h>
-#include<unistd.h> 
 
 #define KB_SEGMENTS_MAX_COUNT 12
 #define KB_TABLE_MAX_COUNT 6
