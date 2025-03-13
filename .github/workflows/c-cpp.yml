@@ -12,6 +12,7 @@ jobs:
         env:
           CC: gcc
           CXX: g++
+          
   build-linux-clang:
     runs-on: ubuntu-18.04
     steps:
@@ -22,6 +23,7 @@ jobs:
         env:
           CC: clang
           CXX: clang++
+          
   build-windows-msvc:
     runs-on: windows-2019
     steps:
