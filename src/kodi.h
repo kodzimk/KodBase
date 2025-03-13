@@ -125,7 +125,7 @@ void create_table(String_View src) {
 			size_t cur = 0; 
 			char line[64];
 			char ch;
-			while ((ch = fgetc(fptr)) != EOF) {
+			while ((ch = (char)fgetc(fptr)) != '\0') {
 				line[cur++] = ch;
 
 				if (ch == '\n') {
@@ -169,7 +169,8 @@ void create_table(String_View src) {
 	for (size_t i = 0; i < table_name.count; i++)
 	{
 		name[i] = table_name.data[i];
-	}name[table_name.count + 1] = "/";
+	}
+	name[table_name.count + 1] = '/';
 	chdir(name);
 
 	FILE* fptr;
