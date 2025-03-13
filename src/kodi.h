@@ -104,53 +104,70 @@ void create_table(String_View src) {
 		fptr = fopen("forms.txt", "r");
 
 		if (fptr == NULL) {
-			fprintf(stderr, "Couldnt open: %s!!!\n",table_name.data);
-			exit(1);
+			fptr = fopen("forms.txt", "w");
+
+			for (size_t i = 0; i < table_name.count; i++)
+			{
+				fputc(table_name.data[i], fptr);
+			}fputc('\n', fptr);
+
+			fclose(fptr);
 		}
+		else {
+			size_t cur = 0; 
+			char line[64];
+			char ch;
+			while ((ch = fgetc(fptr)) != EOF) {
+				line[cur++] = ch;
 
-		size_t cur = 0;
-		char ch;
-
-		while ((ch = fgetc(fptr)) != '\n') {
-			if (ch != table_name.data[cur++]) {
-				break;
+				if (ch == '\n') {
+					String_View name = sv_from_cstr(line);
+					name.count -= 1;
+					if (sv_eq(table_name, name)) {
+						fprintf(stderr, "Form already exist!!!\n");
+						exit(1);
+					}
+					memset(line, 0, sizeof line);
+					cur = 0;
+				}
 			}
+		
+			fclose(fptr);
+			fptr = fopen("forms.txt", "a");
+
+			for (size_t i = 0; i < table_name.count; i++)
+			{
+				fputc(table_name.data[i], fptr);
+			}fputc('\n', fptr);
+
+			fclose(fptr);
 		}
-
-		if (ch == '\n') {
-			fprintf(stderr, "Form name already exist!!!\n");
-			exit(1);
-		}
-
-		fclose(fptr);
-		fptr = fopen("forms.txt", "a");
-
-		for (size_t i = 0; i < table_name.count; i++)
-		{
-			fputc(table_name.data[i], fptr);
-		}fputc('\n', fptr);
-
-		fclose(fptr);
 	}
 
 	src.count -= 2;
 	src.data += 2;
 	src = sv_trim(src);
 
-		char name[32] = "mkdir ";
-		name[5] = ' ';
-		for (size_t i = 6; i < table_name.count + 6; i++)
-		{
-			name[i] = table_name.data[i - 6];
-		}
+	char name[32] = "mkdir ";
+	name[5] = ' ';
+	for (size_t i = 6; i < table_name.count + 6; i++)
+	{
+		name[i] = table_name.data[i - 6];
+	}
 
-		chdir("data/");
-		system(name);
+	chdir("data/");
+	system(name);
+	memset(name, 0, sizeof name);
+	for (size_t i = 0; i < table_name.count; i++)
+	{
+		name[i] = table_name.data[i];
+	}name[table_name.count + 1] = "/";
+	chdir(name);
 
-		FILE* fptr;
-		fptr = fopen("names.txt", "w");
+	FILE* fptr;
+	fptr = fopen("names.txt", "w");
 
-		while (*src.data != ')') {
+	while (*src.data != ')') {
 			String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
 			String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
 			src.count -= 2;
@@ -166,7 +183,7 @@ void create_table(String_View src) {
 				fputc(member_name.data[i], fptr);
 			}fputc('\n', fptr);
 		}
-    	fclose(fptr);
+    fclose(fptr);
 }
 
 void translate_script_to_binary(String_View src)
