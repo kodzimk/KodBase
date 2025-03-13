@@ -1,0 +1,4 @@
+CREATE TABLE KAISAR(
+     human_id INT,
+     age INT,
+);

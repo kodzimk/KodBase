@@ -1,5 +1,4 @@
-#include"kodi.h"
-#define KODI_IMPLEMENTATION
+#include<stdio.h>
 
 int main()
 {

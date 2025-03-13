@@ -1,0 +1,2 @@
+INT human_id
+INT age
