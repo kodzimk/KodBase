@@ -21,6 +21,7 @@
 #include<string.h>
 #include<ctype.h>
 #include<errno.h>
+#include<unistd.h> 
 
 #define KB_SEGMENTS_MAX_COUNT 12
 #define KB_TABLE_MAX_COUNT 6
@@ -28,11 +29,7 @@
 String_View slurp_file(const char* file_path);
 
 typedef enum {
-	CREATE_TABLE,
-	SELECT_ITEM,
-}Inst_Type;
-
-typedef enum {
+	NONE,
 	INT,
 	VARCHAR,
 }Data_Type;
@@ -43,6 +40,7 @@ typedef struct {
 	Data_Type selected_seeqment_type;
 }Base;
 
+void create_table(String_View src);
 void translate_script_to_binary(String_View src);
 
 #endif
@@ -92,10 +90,9 @@ String_View slurp_file(const char* file_path)
 	}
 
 	fclose(f);
-
 	return (String_View) {
 		.count = n,
-		.data = buffer,
+			.data = buffer,
 	};
 }
 
@@ -122,10 +119,10 @@ void create_table(String_View src) {
 			fclose(fptr);
 		}
 		else {
-			size_t cur = 0; 
+			size_t cur = 0;
 			char line[64];
 			char ch;
-			while ((ch = (char)fgetc(fptr)) != '\0') {
+			while ((ch = fgetc(fptr)) != EOF) {
 				line[cur++] = ch;
 
 				if (ch == '\n') {
@@ -139,7 +136,7 @@ void create_table(String_View src) {
 					cur = 0;
 				}
 			}
-		
+
 			fclose(fptr);
 			fptr = fopen("forms.txt", "a");
 
@@ -169,30 +166,143 @@ void create_table(String_View src) {
 	for (size_t i = 0; i < table_name.count; i++)
 	{
 		name[i] = table_name.data[i];
-	}
-	name[table_name.count + 1] = '/';
+	}name[table_name.count + 1] = "/";
 	chdir(name);
 
 	FILE* fptr;
 	fptr = fopen("names.txt", "w");
 
 	while (*src.data != ')') {
-			String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
-			String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
-			src.count -= 2;
-			src.data += 2;
-			src = sv_trim(src);
+		String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
+		String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
+		src.count -= 2;
+		src.data += 2;
+		src = sv_trim(src);
 
-			for (size_t i = 0; i < member_type.count; i++)
-			{
-				fputc(member_type.data[i], fptr);
-			}fputc(' ', fptr);
-			for (size_t i = 0; i < member_name.count; i++)
-			{
-				fputc(member_name.data[i], fptr);
-			}fputc('\n', fptr);
+		for (size_t i = 0; i < member_type.count; i++)
+		{
+			fputc(member_type.data[i], fptr);
+		}fputc(' ', fptr);
+		for (size_t i = 0; i < member_name.count; i++)
+		{
+			fputc(member_name.data[i], fptr);
+		}fputc('\n', fptr);
+	}
+	fclose(fptr);
+}
+
+void create_record_table(String_View src)
+{
+	String_View table_name = sv_trim(sv_chop_by_delim(&src, '('));
+
+	if (table_name.count > src.count) {
+		fprintf(stderr, "Incorrect syntax!!!\n");
+		exit(1);
+	}
+	else {
+		chdir("data/");
+		FILE* fptr;
+		fptr = fopen("forms.txt", "r");
+
+		if (fptr == NULL) {
+			fprintf(stderr, "There is no 'form' at all!!!\n");
+			exit(1);
 		}
-    fclose(fptr);
+		else {
+			size_t cur = 0;
+			char line[64];
+			char ch;
+			bool form_have = false;
+
+			while ((ch = fgetc(fptr)) != EOF) {
+				line[cur++] = ch;
+
+				if (ch == '\n') {
+					String_View name = sv_from_cstr(line);
+					name.count -= 2;
+					if (sv_eq(table_name, name)) {
+						form_have = true;
+						break;
+					}
+					memset(line, 0, sizeof line);
+					cur = 0;
+				}
+			}
+
+			if (!form_have){
+				fprintf(stderr, "There is not form like that!!!\n");
+				exit(1);
+			}
+
+			fclose(fptr);
+		}
+	}
+
+	Data_Type types[12];
+	size_t type_size = 0;
+	char dir[64];
+
+	for (size_t i = 0; i < table_name.count; i++)
+	{
+		dir[i] = table_name.data[i];
+	}
+	chdir("IGOR");
+
+	String_View name = slurp_file("names.txt");
+	char names[12][64];
+	int size = 0;
+	int sizes[12];
+
+	while (name.count > 0) {
+		String_View type = sv_trim(sv_chop_by_delim(&name,' '));
+		if (sv_eq(type, sv_from_cstr("INT"))) {
+			printf("INT\n");
+			types[type_size++] = INT;
+		}else if (sv_eq(type, sv_from_cstr("VARCHAR"))) {
+			printf("VARCHAR\n");
+			types[type_size++] = VARCHAR;
+		}
+		type = sv_trim(sv_chop_by_delim(&name, '\n'));
+
+		for (size_t i = 0; i < type.count; i++)
+		{
+			names[size][i] = type.data[i];
+		}
+		sizes[size] = type.count;
+		size++;
+	}
+
+	FILE* data_file;
+	data_file = fopen("1.txt", "w");
+
+	String_View data = sv_trim(sv_chop_by_delim(&src, ')'));
+	size_t cur = 0;
+	while (data.count > 0) {
+		String_View value = sv_trim(sv_chop_by_delim(&data, ','));
+		for (size_t i = 0; i < sizes[cur]; i++)
+		{
+			fputc(names[cur][i], data_file);
+		}fputc(':', data_file);
+
+		if (isdigit(*value.data) && types[cur] == INT) {
+
+			for (size_t i = 0; i < value.count; i++)
+			{
+				fputc(value.data[i], data_file);
+			}fputc('\n', data_file);
+		}
+		else if (types[cur] == VARCHAR) {
+			value.count -= 1;
+			value.data += 1;
+			for (size_t i = 0; i < value.count - 1; i++)
+			{
+				fputc(value.data[i], data_file);
+			}fputc('\n', data_file);
+		}
+		cur++;
+	}
+
+	fclose(data_file);
 }
 
 void translate_script_to_binary(String_View src)
@@ -207,6 +317,16 @@ void translate_script_to_binary(String_View src)
 			}
 			else {
 				fprintf(stderr, "Error: HAVE TO BE TABLE SYNTAX AFTER CREATE!!!\n");
+				exit(1);
+			}
+		}
+		else if (sv_eq(line, sv_from_cstr("INSERT"))) {
+			line = sv_trim(sv_chop_by_delim(&src, ' '));
+			if (sv_eq(line, sv_from_cstr("INTO"))) {
+				create_record_table(src);
+			}
+			else {
+				fprintf(stderr, "Error: HAVE TO BE TABLE SYNTAX AFTER INSERT!!!\n");
 				exit(1);
 			}
 		}
