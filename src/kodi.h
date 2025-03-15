@@ -37,6 +37,7 @@ typedef enum {
 typedef struct {
 	void* value;
 	Data_Type type;
+	size_t size;
 }Data;
 
 typedef struct {
@@ -217,19 +218,19 @@ void create_table(String_View src) {
 	{
 		name[i] = table_name.data[i - 6];
 	}
-
 	chdir("data/");
 	system(name);
+
 	memset(name, 0, sizeof name);
 	for (size_t i = 0; i < table_name.count; i++)
 	{
 		name[i] = table_name.data[i];
-	}name[table_name.count + 1] = "/";
+	}
 	chdir(name);
 
 	FILE* fptr;
 	fptr = fopen("names.txt", "w");
-
+	bool unique_has = false;
 	while (*src.data != ')') {
 		String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
 
@@ -242,10 +243,15 @@ void create_table(String_View src) {
 		}fputc(' ', fptr);
 
 	    if (sv_eq(member_type, sv_from_cstr("UNIQUE"))) {
+			if (unique_has) {
+				fprintf(stderr, "Error: Cant be two unique members!!!\n");
+				exit(1);
+			}
 			for (size_t i = 0; i < member_type.count; i++)
 			{
 				fputc(member_type.data[i], fptr);
 			}fputc(' ', fptr);
+			unique_has = true;
 		}
 		for (size_t i = 0; i < member_name.count; i++)
 		{
@@ -256,7 +262,24 @@ void create_table(String_View src) {
 		src.data += 2;
 		src = sv_trim(src);
 	}
-	fclose(fptr);
+
+	if (!unique_has) {
+		fclose(fptr);
+		fclose(fopen("names.txt", "w"));
+		chdir("..");
+		char line[64] = "rm -rf ";
+		for (size_t i = 0; i < table_name.count; i++)
+		{
+			line[i + 7] = table_name.data[i];
+		}
+		system(line);
+		system("rm -f forms.txt");
+		fprintf(stderr, "Error: There is has to be at least one unique member!!!\n");
+		exit(1);
+	}
+	else {
+		fclose(fptr);
+	}
 }
 
 void create_record_table(String_View src)
@@ -278,6 +301,7 @@ void create_record_table(String_View src)
 		}
 		else {
 			size_t cur = 0;
+			size_t index = 0;
 			char line[64];
 			char ch;
 			bool form_have = false;
@@ -294,6 +318,7 @@ void create_record_table(String_View src)
 					}
 					memset(line, 0, sizeof line);
 					cur = 0;
+					index++;
 				}
 			}
 
@@ -308,13 +333,7 @@ void create_record_table(String_View src)
 
 	Data_Type types[12];
 	size_t type_size = 0;
-	char dir[64];
-
-	for (size_t i = 0; i < table_name.count; i++)
-	{
-		dir[i] = table_name.data[i];
-	}
-	chdir("NIGOR");
+	chdir("IGOR");
 
 	String_View name = slurp_file("names.txt");
 	char names[12][64];
@@ -365,8 +384,7 @@ void create_record_table(String_View src)
 			datas[cur].type = INT;
 			datas[cur].value = (int)sv_to_u64(value);
 		}
-		else if (types[cur] == VARCHAR) {
-			
+		else if (types[cur] == VARCHAR) {		
 			value.count -= 1;
 			value.data += 1;
 			datas[cur].type = VARCHAR;
@@ -376,25 +394,30 @@ void create_record_table(String_View src)
 			{
 				line[i] = value.data[i];
 			}
+			datas[cur].size = value.count - 1;
 			datas[cur].value = line;
 		}
 		cur++;
 	}
 
 	char name_of_file[64];
-	printf("%d\n", unique_name);
+	if (unique_name == -1) {
+		fprintf(stderr, "Error: There is has to be unique member!!!\n");
+		exit(1);
+	}
 	if (datas[unique_name].type == INT) {
 		int result = (int)datas[unique_name].value;
 		citoa(result, name_of_file, 10);
 	}
-	size_t s = strlen(name_of_file);
-	name_of_file[s++] = '.';
-	name_of_file[s++] = 't';
-	name_of_file[s++] = 'x';
-	name_of_file[s++] = 't';
+	else if (datas[unique_name].type == VARCHAR) {
+		char* line = (char*)datas[unique_name].value;
+		for (size_t i = 0; i < strlen(line); i++)
+		{
+			name_of_file[i] = line[i];
+		}
+	}
 
 	data_file = fopen(name_of_file, "w");
-
 	size_t index = 0;
 	while (index < cur) {
 		if (datas[index].type == INT) {
@@ -404,7 +427,7 @@ void create_record_table(String_View src)
 			}fputc(':', data_file);
 
 			char line[64];
-			int result = (int)datas[unique_name].value;
+			int result = (int)datas[index].value;
 			citoa(result, line, 10);
 			for (size_t i = 0; i < strlen(line); i++)
 			{

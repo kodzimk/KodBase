@@ -1,2 +1,2 @@
-INT UNIQUE human_id
-VARCHAR age
+INT human_id
+VARCHAR UNIQUE age

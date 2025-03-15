@@ -1,2 +1,0 @@
-human_id:12
-age:Niger
