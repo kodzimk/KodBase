@@ -35,6 +35,11 @@ typedef enum {
 }Data_Type;
 
 typedef struct {
+	void* value;
+	Data_Type type;
+}Data;
+
+typedef struct {
 	void* selected_segment;
 	String_View seleected_seqment_name;
 	Data_Type selected_seeqment_type;
@@ -46,6 +51,59 @@ void translate_script_to_binary(String_View src);
 #endif
 
 #ifndef KODI_IMPLEMENTATION
+
+void reverse(char str[], int length)
+{
+	int start = 0;
+	int end = length - 1;
+	while (start < end) {
+		char temp = str[start];
+		str[start] = str[end];
+		str[end] = temp;
+		end--;
+		start++;
+	}
+}
+// Implementation of citoa()
+char* citoa(int num, char* str, int base)
+{
+	int i = 0;
+	bool isNegative = false;
+
+	/* Handle 0 explicitly, otherwise empty string is
+	 * printed for 0 */
+	if (num == 0) {
+		str[i++] = '0';
+		str[i] = '\0';
+		return str;
+	}
+
+	// In standard itoa(), negative numbers are handled
+	// only with base 10. Otherwise numbers are
+	// considered unsigned.
+	if (num < 0 && base == 10) {
+		isNegative = true;
+		num = -num;
+	}
+
+	// Process individual digits
+	while (num != 0) {
+		int rem = num % base;
+		str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+		num = num / base;
+	}
+
+	// If number is negative, append '-'
+	if (isNegative)
+		str[i++] = '-';
+
+	str[i] = '\0'; // Append string terminator
+
+	// Reverse the string
+	reverse(str, i);
+
+	return str;
+}
 
 String_View slurp_file(const char* file_path)
 {
@@ -174,19 +232,29 @@ void create_table(String_View src) {
 
 	while (*src.data != ')') {
 		String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
-		String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
-		src.count -= 2;
-		src.data += 2;
-		src = sv_trim(src);
 
-		for (size_t i = 0; i < member_type.count; i++)
-		{
-			fputc(member_type.data[i], fptr);
+		String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
+		String_View type = sv_trim(sv_chop_by_delim(&member_type, ' '));
+		member_type = sv_trim(member_type);
+
+		for (size_t i = 0; i < type.count; i++){
+				fputc(type.data[i], fptr);
 		}fputc(' ', fptr);
+
+	    if (sv_eq(member_type, sv_from_cstr("UNIQUE"))) {
+			for (size_t i = 0; i < member_type.count; i++)
+			{
+				fputc(member_type.data[i], fptr);
+			}fputc(' ', fptr);
+		}
 		for (size_t i = 0; i < member_name.count; i++)
 		{
 			fputc(member_name.data[i], fptr);
 		}fputc('\n', fptr);
+
+		src.count -= 2;
+		src.data += 2;
+		src = sv_trim(src);
 	}
 	fclose(fptr);
 }
@@ -219,7 +287,7 @@ void create_record_table(String_View src)
 
 				if (ch == '\n') {
 					String_View name = sv_from_cstr(line);
-					name.count -= 2;
+					name.count -= 1;
 					if (sv_eq(table_name, name)) {
 						form_have = true;
 						break;
@@ -230,7 +298,7 @@ void create_record_table(String_View src)
 			}
 
 			if (!form_have){
-				fprintf(stderr, "There is not form like that!!!\n");
+				fprintf(stderr, "There is not form like that!!!: %s\n",table_name.data);
 				exit(1);
 			}
 
@@ -246,10 +314,11 @@ void create_record_table(String_View src)
 	{
 		dir[i] = table_name.data[i];
 	}
-	chdir("IGOR");
+	chdir("NIGOR");
 
 	String_View name = slurp_file("names.txt");
 	char names[12][64];
+	int unique_name = -1;
 	int size = 0;
 	int sizes[12];
 
@@ -258,48 +327,105 @@ void create_record_table(String_View src)
 		if (sv_eq(type, sv_from_cstr("INT"))) {
 			printf("INT\n");
 			types[type_size++] = INT;
-		}else if (sv_eq(type, sv_from_cstr("VARCHAR"))) {
+		}
+		else if (sv_eq(type, sv_from_cstr("VARCHAR"))) {
 			printf("VARCHAR\n");
 			types[type_size++] = VARCHAR;
 		}
-		type = sv_trim(sv_chop_by_delim(&name, '\n'));
 
-		for (size_t i = 0; i < type.count; i++)
-		{
-			names[size][i] = type.data[i];
+		type = sv_trim(sv_chop_by_delim(&name, '\n'));
+	    String_View name_type = sv_trim(sv_chop_by_delim(&type, ' '));
+		if (sv_eq(name_type, sv_from_cstr("UNIQUE"))) {
+			unique_name = size;
+			type = sv_trim(type);
+			for (size_t i = 0; i < type.count; i++)
+			{
+				names[size][i] = type.data[i];
+			}
+			sizes[size] = type.count;
 		}
-		sizes[size] = type.count;
+		else {
+			for (size_t i = 0; i < name_type.count; i++)
+			{
+				names[size][i] = name_type.data[i];
+			}
+			sizes[size] = name_type.count;
+		}
 		size++;
 	}
 
 	FILE* data_file;
-	data_file = fopen("1.txt", "w");
+	Data datas[12];
 
 	String_View data = sv_trim(sv_chop_by_delim(&src, ')'));
 	size_t cur = 0;
 	while (data.count > 0) {
 		String_View value = sv_trim(sv_chop_by_delim(&data, ','));
-		for (size_t i = 0; i < sizes[cur]; i++)
-		{
-			fputc(names[cur][i], data_file);
-		}fputc(':', data_file);
-
 		if (isdigit(*value.data) && types[cur] == INT) {
-
-			for (size_t i = 0; i < value.count; i++)
-			{
-				fputc(value.data[i], data_file);
-			}fputc('\n', data_file);
+			datas[cur].type = INT;
+			datas[cur].value = (int)sv_to_u64(value);
 		}
 		else if (types[cur] == VARCHAR) {
+			
 			value.count -= 1;
 			value.data += 1;
+			datas[cur].type = VARCHAR;
+			char* line = (char*)malloc(sizeof(char) * 64);
+
 			for (size_t i = 0; i < value.count - 1; i++)
 			{
-				fputc(value.data[i], data_file);
-			}fputc('\n', data_file);
+				line[i] = value.data[i];
+			}
+			datas[cur].value = line;
 		}
 		cur++;
+	}
+
+	char name_of_file[64];
+	printf("%d\n", unique_name);
+	if (datas[unique_name].type == INT) {
+		int result = (int)datas[unique_name].value;
+		citoa(result, name_of_file, 10);
+	}
+	size_t s = strlen(name_of_file);
+	name_of_file[s++] = '.';
+	name_of_file[s++] = 't';
+	name_of_file[s++] = 'x';
+	name_of_file[s++] = 't';
+
+	data_file = fopen(name_of_file, "w");
+
+	size_t index = 0;
+	while (index < cur) {
+		if (datas[index].type == INT) {
+			for (size_t i = 0; i < sizes[index]; i++)
+			{
+				fputc(names[index][i], data_file);
+			}fputc(':', data_file);
+
+			char line[64];
+			int result = (int)datas[unique_name].value;
+			citoa(result, line, 10);
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], data_file);
+			}fputc('\n', data_file);
+		}
+		else if (datas[index].type == VARCHAR) {
+			for (size_t i = 0; i < sizes[index]; i++)
+			{
+				fputc(names[index][i], data_file);
+			}fputc(':', data_file);
+
+			char* line = (char*)datas[index].value;
+
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], data_file);
+			}fputc('\n', data_file);
+			free(datas[index].value);
+		}
+		index++;
 	}
 
 	fclose(data_file);

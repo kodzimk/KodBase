@@ -1,4 +1,4 @@
-CREATE TABLE IGOR(
-     human_id INT,
+CREATE TABLE NIGOR(
+     human_id INT UNIQUE,
      age VARCHAR,
 );
