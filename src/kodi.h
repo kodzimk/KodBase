@@ -26,6 +26,8 @@
 #define KB_SEGMENTS_MAX_COUNT 12
 #define KB_TABLE_MAX_COUNT 6
 
+void reverse(char str[], int length);
+char* citoa(int num, char* str, int base);
 String_View slurp_file(const char* file_path);
 
 typedef enum {
@@ -41,17 +43,29 @@ typedef struct {
 }Data;
 
 typedef struct {
-	void* selected_segment;
-	String_View seleected_seqment_name;
-	Data_Type selected_seeqment_type;
+	String_View selected_record;
+	String_View selected_form_name;
 }Base;
 
+Base base = { 0 };
+
 void create_table(String_View src);
-void translate_script_to_binary(String_View src);
+void create_record_table(String_View src);
+void select_item_from_table(String_View src, Base* base);
+void translate_script_to_binary(String_View src, Base* base);
+void set_cstr_from_sv(char* str, String_View sv, int blank);
 
 #endif
 
 #ifndef KODI_IMPLEMENTATION
+
+void set_cstr_from_sv(char* str, String_View sv,int blank)
+{
+	for (size_t i = blank; i < sv.count + blank; i++)
+	{
+		str[i] = sv.data[i - blank];
+	}
+}
 
 void reverse(char str[], int length)
 {
@@ -214,18 +228,12 @@ void create_table(String_View src) {
 
 	char name[32] = "mkdir ";
 	name[5] = ' ';
-	for (size_t i = 6; i < table_name.count + 6; i++)
-	{
-		name[i] = table_name.data[i - 6];
-	}
+	set_cstr_from_sv(name, table_name, 6);
 	chdir("data/");
 	system(name);
 
 	memset(name, 0, sizeof name);
-	for (size_t i = 0; i < table_name.count; i++)
-	{
-		name[i] = table_name.data[i];
-	}
+	set_cstr_from_sv(name, table_name, 0);
 	chdir(name);
 
 	FILE* fptr;
@@ -280,6 +288,8 @@ void create_table(String_View src) {
 	else {
 		fclose(fptr);
 	}
+
+	chdir("../..");
 }
 
 void create_record_table(String_View src)
@@ -291,7 +301,7 @@ void create_record_table(String_View src)
 		exit(1);
 	}
 	else {
-		chdir("data/");
+		chdir("data");
 		FILE* fptr;
 		fptr = fopen("forms.txt", "r");
 
@@ -333,11 +343,15 @@ void create_record_table(String_View src)
 
 	Data_Type types[12];
 	size_t type_size = 0;
-	chdir("IGOR");
+	char dir[32];
+
+	set_cstr_from_sv(dir, table_name, 0);
+	chdir(dir);
 
 	String_View name = slurp_file("names.txt");
 	char names[12][64];
 	int unique_name = -1;
+	size_t cur = 0;
 	int size = 0;
 	int sizes[12];
 
@@ -366,18 +380,16 @@ void create_record_table(String_View src)
 		else {
 			for (size_t i = 0; i < name_type.count; i++)
 			{
-				names[size][i] = name_type.data[i];
+				names[cur][i] = name_type.data[i];
 			}
 			sizes[size] = name_type.count;
 		}
 		size++;
 	}
-
 	FILE* data_file;
 	Data datas[12];
 
 	String_View data = sv_trim(sv_chop_by_delim(&src, ')'));
-	size_t cur = 0;
 	while (data.count > 0) {
 		String_View value = sv_trim(sv_chop_by_delim(&data, ','));
 		if (isdigit(*value.data) && types[cur] == INT) {
@@ -452,9 +464,92 @@ void create_record_table(String_View src)
 	}
 
 	fclose(data_file);
+
+	chdir("../..");
 }
 
-void translate_script_to_binary(String_View src)
+void select_item_from_table(String_View src,Base *base)
+{
+	String_View unique = sv_trim(sv_chop_by_delim(&src,' '));
+	unique.count += 1;
+
+	if (sv_eq(unique, sv_from_cstr("UNIQUE"))) {
+		fprintf(stderr, "Error: HAVE TO BE UNIQUE SYNTAX AFTER SELECT!!!\n");
+		exit(1);
+	}
+	unique = sv_trim(sv_chop_by_delim(&src, ' '));
+
+	String_View form_name = sv_trim(sv_chop_by_delim(&src, ' '));
+	if (sv_eq(unique, sv_from_cstr("FROM"))) {
+		fprintf(stderr, "Error: HAVE TO BE FROM SYNTAX AFTER UNIQUE_MEMBER!!!\n");
+		exit(1);
+	}
+	form_name = sv_trim(sv_chop_by_delim(&src, '\n'));
+     
+	chdir("data/");
+	FILE* fptr;
+	fptr = fopen("forms.txt", "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: There is no form with that name!!!\n");
+		exit(1);
+	}
+
+	size_t cur = 0;
+	size_t index = 0;
+	char line[64];
+	char ch;
+	bool form_have = false;
+
+	while ((ch = fgetc(fptr)) != EOF) {
+		line[cur++] = ch;
+
+		if (ch == '\n') {
+			String_View name = sv_from_cstr(line);
+			name.count -= 1;
+			if (sv_eq(form_name, name)) {
+				form_have = true;
+				break;
+			}
+			memset(line, 0, sizeof line);
+			cur = 0;
+			index++;
+		}
+	}
+	if (!form_have) {
+		fprintf(stderr, "There is not form like that!!!: %s\n", form_name.data);
+		exit(1);
+	}
+
+	fclose(fptr);
+
+	char dir[32];
+	set_cstr_from_sv(dir, form_name, 0);
+	chdir(dir);
+
+	memset(dir, 0, sizeof dir);
+	set_cstr_from_sv(dir, unique, 0);
+
+	fptr = fopen(dir, "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: There is no record with that unqiue member!!!\n");
+		exit(1);
+	}
+
+	base->selected_form_name = form_name;
+	base->selected_record = unique;
+
+	fclose(fptr);
+
+	chdir("../..");
+}
+
+void update_segment(String_View src, Base* base)
+{
+	String_View segment_name = sv_trim(sv_chop_by_delim(&src, ' '));
+	String_View value = sv_trim(sv_chop_by_delim(&src, '\n'));
+}
+
+void translate_script_to_binary(String_View src,Base *base)
 {
 	while (src.count > 0) {
 		String_View line = sv_trim(sv_chop_by_delim(&src, ' '));
@@ -478,6 +573,12 @@ void translate_script_to_binary(String_View src)
 				fprintf(stderr, "Error: HAVE TO BE TABLE SYNTAX AFTER INSERT!!!\n");
 				exit(1);
 			}
+		}
+		else if (sv_eq(line, sv_from_cstr("SELECT"))) {
+			select_item_from_table(src,base);
+		}
+		else if (sv_eq(line, sv_from_cstr("UPDATE"))) {
+			update_segment(src,base);
 		}
 	}
 }
