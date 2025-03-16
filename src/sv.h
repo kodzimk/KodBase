@@ -294,7 +294,8 @@ uint64_t sv_chop_u64(String_View* sv)
 {
     uint64_t result = 0;
     while (sv->count > 0 && isdigit(*sv->data)) {
-        result = result * 10 + *sv->data - '0';
+        result = result * 10 + (uint64_t)(*sv->data - '0');
+
         sv->count -= 1;
         sv->data += 1;
     }

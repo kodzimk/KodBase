@@ -21,7 +21,7 @@ int main(int argc,char** argv)
 	const char* script_file = shift(argc, argv);
 	String_View source = slurp_file(script_file);
 
-	translate_script_to_binary(source,&base,&unique);
+	translate_script_to_binary(source,&base,unique);
 
 	return 0;
 }

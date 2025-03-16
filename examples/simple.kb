@@ -1,4 +1,5 @@
-CREATE TABLE IGOR(
-     human_id INT UNIQUE,
-     age VARCHAR,
+CREATE TABLE KAISAR(
+     age INT UNIQUE,
+     name VARCHAR,
+     height INT,
 );

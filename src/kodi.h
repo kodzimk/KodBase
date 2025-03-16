@@ -21,7 +21,7 @@
 #include<string.h>
 #include<ctype.h>
 #include<errno.h>
-#include<unistd.h> 
+#include<stdint.h>
 
 #define KB_SEGMENTS_MAX_COUNT 12
 #define KB_TABLE_MAX_COUNT 6
@@ -36,11 +36,6 @@ typedef enum {
 	VARCHAR,
 }Data_Type;
 
-typedef struct {
-	void* value;
-	Data_Type type;
-	size_t size;
-}Data;
 
 typedef struct {
 	String_View selected_record;
@@ -51,15 +46,16 @@ Base base = { 0 };
 
 void create_table(String_View *src);
 void create_record_table(String_View *src);
-void select_item_from_table(String_View *src, Base* base, String_View* sv);
-void translate_script_to_binary(String_View src, Base* base, String_View* sv);
-void set_cstr_from_sv(char* str, String_View sv, int blank);
+void set_cstr_from_sv(char* str, String_View sv, size_t blank);
+void update_segment(String_View* src, Base* base, char name[64]);
+void select_item_from_table(String_View *src, Base* base, char name[64]);
+void translate_script_to_binary(String_View src, Base* base, char name[64]);
 
 #endif
 
 #ifndef KODI_IMPLEMENTATION
 
-void set_cstr_from_sv(char* str, String_View sv,int blank)
+void set_cstr_from_sv(char* str, String_View sv,size_t blank)
 {
 	for (size_t i = blank; i < sv.count + blank; i++)
 	{
@@ -142,7 +138,7 @@ String_View slurp_file(const char* file_path)
 		exit(1);
 	}
 
-	char* buffer = (char*)malloc(m);
+	char* buffer = (char*)malloc((size_t)m);
 	if (buffer == NULL) {
 		fprintf(stderr, "ERROR: Could not allocate memory for file: %s\n",
 			strerror(errno));
@@ -155,7 +151,7 @@ String_View slurp_file(const char* file_path)
 		exit(1);
 	}
 
-	size_t n = fread(buffer, 1, m, f);
+	size_t n = fread(buffer, 1, (size_t)m, f);
 	if (ferror(f)) {
 		fprintf(stderr, "ERROR: Could not read file `%s`: %s\n",
 			file_path, strerror(errno));
@@ -170,7 +166,7 @@ String_View slurp_file(const char* file_path)
 }
 
 void create_table(String_View *src) {
-	String_View table_name = sv_trim(sv_chop_by_delim(&src, '('));
+	String_View table_name = sv_trim(sv_chop_by_delim(src, '('));
 
 	if (table_name.count > src->count) {
 		fprintf(stderr, "Incorrect syntax!!!\n");
@@ -197,7 +193,6 @@ void create_table(String_View *src) {
 			char ch;
 			while ((ch = fgetc(fptr)) != EOF) {
 				line[cur++] = ch;
-
 				if (ch == '\n') {
 					String_View name = sv_from_cstr(line);
 					name.count -= 1;
@@ -240,9 +235,9 @@ void create_table(String_View *src) {
 	fptr = fopen("names.txt", "w");
 	bool unique_has = false;
 	while (*src->data != ')') {
-		String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
+		String_View member_name = sv_trim(sv_chop_by_delim(src, ' '));
 
-		String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
+		String_View member_type = sv_trim(sv_chop_by_delim(src, ','));
 		String_View type = sv_trim(sv_chop_by_delim(&member_type, ' '));
 		member_type = sv_trim(member_type);
 
@@ -353,7 +348,7 @@ void create_record_table(String_View *src)
 	int unique_name = -1;
 	size_t cur = 0;
 	int size = 0;
-	int sizes[12];
+	size_t sizes[12];
 
 	while (name.count > 0) {
 		String_View type = sv_trim(sv_chop_by_delim(&name,' '));
@@ -385,6 +380,13 @@ void create_record_table(String_View *src)
 		size++;
 	}
 	FILE* data_file;
+
+	typedef struct {
+		void* value;
+		Data_Type type;
+		size_t size;
+	}Data;
+
 	Data datas[12];
 
 	String_View data = sv_trim(sv_chop_by_delim(src, ')'));
@@ -392,7 +394,7 @@ void create_record_table(String_View *src)
 		String_View value = sv_trim(sv_chop_by_delim(&data, ','));
 		if (isdigit(*value.data) && types[cur] == INT) {
 			datas[cur].type = INT;
-			datas[cur].value = (int)sv_to_u64(value);
+			datas[cur].value = (void*)sv_to_u64(value);
 		}
 		else if (types[cur] == VARCHAR) {		
 			value.count -= 1;
@@ -416,7 +418,7 @@ void create_record_table(String_View *src)
 		exit(1);
 	}
 	if (datas[unique_name].type == INT) {
-		int result = (int)datas[unique_name].value;
+		int result = (uintptr_t)datas[unique_name].value;
 		citoa(result, name_of_file, 10);
 	}
 	else if (datas[unique_name].type == VARCHAR) {
@@ -437,7 +439,7 @@ void create_record_table(String_View *src)
 			}fputc(':', data_file);
 
 			char line[64];
-			int result = (int)datas[index].value;
+			int result = (uintptr_t)datas[index].value;
 			citoa(result, line, 10);
 			for (size_t i = 0; i < strlen(line); i++)
 			{
@@ -466,19 +468,19 @@ void create_record_table(String_View *src)
 	chdir("../..");
 }
 
-void select_item_from_table(String_View *src,Base *base,String_View *sv)
+void select_item_from_table(String_View *src,Base *base,char name[64])
 {
-	*sv = sv_trim(sv_chop_by_delim(src,' '));
-	sv->count += 1;
+	String_View sv = sv_trim(sv_chop_by_delim(src,' '));
+	sv.count += 1;
 
-	if (sv_eq(*sv, sv_from_cstr("UNIQUE"))) {
+	if (sv_eq(sv, sv_from_cstr("UNIQUE"))) {
 		fprintf(stderr, "Error: HAVE TO BE UNIQUE SYNTAX AFTER SELECT!!!\n");
 		exit(1);
 	}
-	*sv = sv_trim(sv_chop_by_delim(src, ' '));
+	sv = sv_trim(sv_chop_by_delim(src, ' '));
 
 	String_View form_name = sv_trim(sv_chop_by_delim(src, ' '));
-	if (sv_eq(*sv, sv_from_cstr("FROM"))) {
+	if (sv_eq(sv, sv_from_cstr("FROM"))) {
 		fprintf(stderr, "Error: HAVE TO BE FROM SYNTAX AFTER UNIQUE_MEMBER!!!\n");
 		exit(1);
 	}
@@ -525,7 +527,7 @@ void select_item_from_table(String_View *src,Base *base,String_View *sv)
 	chdir(dir);
 
 	memset(dir, 0, sizeof dir);
-	set_cstr_from_sv(dir, *sv, 0);
+	set_cstr_from_sv(dir, sv, 0);
 
 	fptr = fopen(dir, "r");
 	if (fptr == NULL) {
@@ -534,14 +536,13 @@ void select_item_from_table(String_View *src,Base *base,String_View *sv)
 	}
 
 	base->selected_form_name = form_name;
-	base->selected_record = *sv;
-
+	set_cstr_from_sv(name, sv, 0);
 	fclose(fptr);
 
 	chdir("../..");
 }
 
-void update_segment(String_View *src, Base* base)
+void update_segment(String_View *src, Base* base, char selected_record_name[64])
 {
 	String_View segment_name = sv_trim(sv_chop_by_delim(src, ' '));
 	String_View record_value = sv_trim(sv_chop_by_delim(src, '\n'));
@@ -564,7 +565,7 @@ void update_segment(String_View *src, Base* base)
 
 	String_View names = slurp_file("names.txt");
 	Segments segments[12];
-	int segment_size = 0;
+	size_t segment_size = 0;
 	int unique_name = -1;
 
 	while (names.count > 0) {
@@ -617,7 +618,7 @@ void update_segment(String_View *src, Base* base)
 		if (sv_eq(value, segment_name)) {
 			value = sv_trim(sv_chop_by_delim(&record, '\n'));
 			if (segments[index].type == INT) {
-				segments[index].value = (int)sv_to_u64(record_value);
+				segments[index].value = (void*)sv_to_u64(record_value);
 			}
 			else if (segments[index].type == VARCHAR) {
 				record_value.count -= 1;
@@ -635,7 +636,7 @@ void update_segment(String_View *src, Base* base)
 		else {
 			value = sv_trim(sv_chop_by_delim(&record, '\n'));
 			if (segments[index].type == INT) {
-				segments[index].value = (int)sv_to_u64(value);
+				segments[index].value = (void*)sv_to_u64(value);
 			}
 			else if (segments[index].type == VARCHAR) {
 				segments[index].type = VARCHAR;
@@ -649,13 +650,12 @@ void update_segment(String_View *src, Base* base)
 			}
 		}
 	}
-
 	if (unique_name == -1) {
 		fprintf(stderr, "Error: There is has to be unique member!!!\n");
 		exit(1);
 	}
 	if (segments[unique_name].type == INT) {
-		int result = (int)segments[unique_name].value;
+		int result = (uintptr_t)segments[unique_name].value;
 		citoa(result, dir, 10);
 	}
 	else if (segments[unique_name].type == VARCHAR) {
@@ -668,12 +668,10 @@ void update_segment(String_View *src, Base* base)
 	
 	FILE* data_file;
 	data_file = fopen(dir, "w");
-	char line[64];
 	for (size_t i = 0; i < strlen(dir); i++)
 	{
-		line[i] = dir[i];
+		selected_record_name[i] = dir[i];
 	}
-	base->selected_record = sv_from_cstr(line);
 	size_t index = 0;
 	while (index < segment_size) {
 		if (segments[index].type == INT) {
@@ -683,7 +681,7 @@ void update_segment(String_View *src, Base* base)
 			}fputc(':', data_file);
 
 			char line[64];
-			int result = (int)segments[index].value;
+			int result = (uintptr_t)segments[index].value;
 			citoa(result, line, 10);
 			for (size_t i = 0; i < strlen(line); i++)
 			{
@@ -706,19 +704,17 @@ void update_segment(String_View *src, Base* base)
 		}
 		index++;
 	}
-
 	fclose(data_file);
 
 	chdir("../..");
 }
 
-String_View unique;
+char unique[64];
 
-void translate_script_to_binary(String_View src,Base *base, String_View* sv)
+void translate_script_to_binary(String_View src,Base *base, char sv[64])
 {
 	while (src.count > 0) {
 		String_View line = sv_trim(sv_chop_by_delim(&src, ' '));
-		
 		
 		if (sv_eq(line, sv_from_cstr("CREATE"))) {
 			line = sv_trim(sv_chop_by_delim(&src, ' '));
@@ -744,10 +740,10 @@ void translate_script_to_binary(String_View src,Base *base, String_View* sv)
 			select_item_from_table(&src,base,sv);
 		}
 		else if (sv_eq(line, sv_from_cstr("UPDATE"))) {
-			update_segment(&src,base);
+			update_segment(&src,base,sv);
 		}
 
-		base->selected_record = *sv;
+		base->selected_record = sv_from_cstr(sv);
 	}
 }
 
