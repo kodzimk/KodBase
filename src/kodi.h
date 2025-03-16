@@ -49,10 +49,10 @@ typedef struct {
 
 Base base = { 0 };
 
-void create_table(String_View src);
-void create_record_table(String_View src);
-void select_item_from_table(String_View src, Base* base);
-void translate_script_to_binary(String_View src, Base* base);
+void create_table(String_View *src);
+void create_record_table(String_View *src);
+void select_item_from_table(String_View *src, Base* base, String_View* sv);
+void translate_script_to_binary(String_View src, Base* base, String_View* sv);
 void set_cstr_from_sv(char* str, String_View sv, int blank);
 
 #endif
@@ -169,10 +169,10 @@ String_View slurp_file(const char* file_path)
 	};
 }
 
-void create_table(String_View src) {
+void create_table(String_View *src) {
 	String_View table_name = sv_trim(sv_chop_by_delim(&src, '('));
 
-	if (table_name.count > src.count) {
+	if (table_name.count > src->count) {
 		fprintf(stderr, "Incorrect syntax!!!\n");
 		exit(1);
 	}
@@ -222,9 +222,9 @@ void create_table(String_View src) {
 		}
 	}
 
-	src.count -= 2;
-	src.data += 2;
-	src = sv_trim(src);
+	src->count -= 2;
+	src->data += 2;
+	*src = sv_trim(*src);
 
 	char name[32] = "mkdir ";
 	name[5] = ' ';
@@ -239,7 +239,7 @@ void create_table(String_View src) {
 	FILE* fptr;
 	fptr = fopen("names.txt", "w");
 	bool unique_has = false;
-	while (*src.data != ')') {
+	while (*src->data != ')') {
 		String_View member_name = sv_trim(sv_chop_by_delim(&src, ' '));
 
 		String_View member_type = sv_trim(sv_chop_by_delim(&src, ','));
@@ -266,9 +266,9 @@ void create_table(String_View src) {
 			fputc(member_name.data[i], fptr);
 		}fputc('\n', fptr);
 
-		src.count -= 2;
-		src.data += 2;
-		src = sv_trim(src);
+		src->count -= 2;
+		src->data += 2;
+		*src = sv_trim(*src);
 	}
 
 	if (!unique_has) {
@@ -292,11 +292,11 @@ void create_table(String_View src) {
 	chdir("../..");
 }
 
-void create_record_table(String_View src)
+void create_record_table(String_View *src)
 {
-	String_View table_name = sv_trim(sv_chop_by_delim(&src, '('));
+	String_View table_name = sv_trim(sv_chop_by_delim(src, '('));
 
-	if (table_name.count > src.count) {
+	if (table_name.count > src->count) {
 		fprintf(stderr, "Incorrect syntax!!!\n");
 		exit(1);
 	}
@@ -358,11 +358,9 @@ void create_record_table(String_View src)
 	while (name.count > 0) {
 		String_View type = sv_trim(sv_chop_by_delim(&name,' '));
 		if (sv_eq(type, sv_from_cstr("INT"))) {
-			printf("INT\n");
 			types[type_size++] = INT;
 		}
 		else if (sv_eq(type, sv_from_cstr("VARCHAR"))) {
-			printf("VARCHAR\n");
 			types[type_size++] = VARCHAR;
 		}
 
@@ -380,7 +378,7 @@ void create_record_table(String_View src)
 		else {
 			for (size_t i = 0; i < name_type.count; i++)
 			{
-				names[cur][i] = name_type.data[i];
+				names[size][i] = name_type.data[i];
 			}
 			sizes[size] = name_type.count;
 		}
@@ -389,7 +387,7 @@ void create_record_table(String_View src)
 	FILE* data_file;
 	Data datas[12];
 
-	String_View data = sv_trim(sv_chop_by_delim(&src, ')'));
+	String_View data = sv_trim(sv_chop_by_delim(src, ')'));
 	while (data.count > 0) {
 		String_View value = sv_trim(sv_chop_by_delim(&data, ','));
 		if (isdigit(*value.data) && types[cur] == INT) {
@@ -462,29 +460,29 @@ void create_record_table(String_View src)
 		}
 		index++;
 	}
-
+	
 	fclose(data_file);
 
 	chdir("../..");
 }
 
-void select_item_from_table(String_View src,Base *base)
+void select_item_from_table(String_View *src,Base *base,String_View *sv)
 {
-	String_View unique = sv_trim(sv_chop_by_delim(&src,' '));
-	unique.count += 1;
+	*sv = sv_trim(sv_chop_by_delim(src,' '));
+	sv->count += 1;
 
-	if (sv_eq(unique, sv_from_cstr("UNIQUE"))) {
+	if (sv_eq(*sv, sv_from_cstr("UNIQUE"))) {
 		fprintf(stderr, "Error: HAVE TO BE UNIQUE SYNTAX AFTER SELECT!!!\n");
 		exit(1);
 	}
-	unique = sv_trim(sv_chop_by_delim(&src, ' '));
+	*sv = sv_trim(sv_chop_by_delim(src, ' '));
 
-	String_View form_name = sv_trim(sv_chop_by_delim(&src, ' '));
-	if (sv_eq(unique, sv_from_cstr("FROM"))) {
+	String_View form_name = sv_trim(sv_chop_by_delim(src, ' '));
+	if (sv_eq(*sv, sv_from_cstr("FROM"))) {
 		fprintf(stderr, "Error: HAVE TO BE FROM SYNTAX AFTER UNIQUE_MEMBER!!!\n");
 		exit(1);
 	}
-	form_name = sv_trim(sv_chop_by_delim(&src, '\n'));
+	form_name = sv_trim(sv_chop_by_delim(src, '\n'));
      
 	chdir("data/");
 	FILE* fptr;
@@ -527,7 +525,7 @@ void select_item_from_table(String_View src,Base *base)
 	chdir(dir);
 
 	memset(dir, 0, sizeof dir);
-	set_cstr_from_sv(dir, unique, 0);
+	set_cstr_from_sv(dir, *sv, 0);
 
 	fptr = fopen(dir, "r");
 	if (fptr == NULL) {
@@ -536,28 +534,196 @@ void select_item_from_table(String_View src,Base *base)
 	}
 
 	base->selected_form_name = form_name;
-	base->selected_record = unique;
+	base->selected_record = *sv;
 
 	fclose(fptr);
 
 	chdir("../..");
 }
 
-void update_segment(String_View src, Base* base)
+void update_segment(String_View *src, Base* base)
 {
-	String_View segment_name = sv_trim(sv_chop_by_delim(&src, ' '));
-	String_View value = sv_trim(sv_chop_by_delim(&src, '\n'));
+	String_View segment_name = sv_trim(sv_chop_by_delim(src, ' '));
+	String_View record_value = sv_trim(sv_chop_by_delim(src, '\n'));
+
+	if (base->selected_record.count == 0 || base->selected_form_name.count == 0) {
+		fprintf(stderr, "Error: There is no record or form name!!!\n");
+		exit(1);
+	}
+	chdir("data");
+	char dir[32];
+	set_cstr_from_sv(dir, base->selected_form_name, 0);
+	chdir(dir);
+	memset(dir, 0, sizeof dir);
+
+	typedef struct {
+		Data_Type type;
+		String_View name;
+		void* value;
+	}Segments;
+
+	String_View names = slurp_file("names.txt");
+	Segments segments[12];
+	int segment_size = 0;
+	int unique_name = -1;
+
+	while (names.count > 0) {
+		String_View type = sv_trim(sv_chop_by_delim(&names, ' '));
+		if (sv_eq(type, sv_from_cstr("INT"))) {
+			segments[segment_size].type = INT;
+		}
+		else if (sv_eq(type, sv_from_cstr("VARCHAR"))) {
+			segments[segment_size].type = VARCHAR;
+		}
+
+		type = sv_trim(sv_chop_by_delim(&names, '\n'));
+		String_View name_type = sv_trim(sv_chop_by_delim(&type, ' '));
+		if (sv_eq(name_type, sv_from_cstr("UNIQUE"))) {
+			unique_name = segment_size;
+			type = sv_trim(type);
+			segments[segment_size].name = type;
+		}
+		else {
+			segments[segment_size].name = name_type;
+		}
+		segment_size++;
+	}
+
+	set_cstr_from_sv(dir, base->selected_record, 0);
+	String_View record = slurp_file(dir);
+	char delete[32] = "rm ";
+	for (size_t i = 0; i < strlen(dir); i++)
+	{
+		delete[i + 3] = dir[i];
+	}
+	system(delete);
+	memset(dir, 0, sizeof dir);
+
+	while (record.count > 0) {
+		int index = -1;
+		String_View value = sv_trim(sv_chop_by_delim(&record, ':'));\
+		for (size_t i = 0; i < segment_size; i++)
+		{
+			if (sv_eq(segments[i].name, value)) {
+				index = i;
+				break;
+			}
+		}
+		if (index == -1) {
+			fprintf(stderr, "Error: There is no member in recording!!!\n");
+			exit(1);
+		}
+
+		if (sv_eq(value, segment_name)) {
+			value = sv_trim(sv_chop_by_delim(&record, '\n'));
+			if (segments[index].type == INT) {
+				segments[index].value = (int)sv_to_u64(record_value);
+			}
+			else if (segments[index].type == VARCHAR) {
+				record_value.count -= 1;
+				record_value.data += 1;
+				segments[index].type = VARCHAR;
+				char* line = (char*)malloc(sizeof(char) * 64);
+
+				for (size_t i = 0; i < record_value.count - 1; i++)
+				{
+					line[i] = record_value.data[i];
+				}
+				segments[index].value = line;
+			}
+		}
+		else {
+			value = sv_trim(sv_chop_by_delim(&record, '\n'));
+			if (segments[index].type == INT) {
+				segments[index].value = (int)sv_to_u64(value);
+			}
+			else if (segments[index].type == VARCHAR) {
+				segments[index].type = VARCHAR;
+				char* line = (char*)malloc(sizeof(char) * 64);
+
+				for (size_t i = 0; i < value.count; i++)
+				{
+					line[i] = value.data[i];
+				}
+				segments[index].value = line;
+			}
+		}
+	}
+
+	if (unique_name == -1) {
+		fprintf(stderr, "Error: There is has to be unique member!!!\n");
+		exit(1);
+	}
+	if (segments[unique_name].type == INT) {
+		int result = (int)segments[unique_name].value;
+		citoa(result, dir, 10);
+	}
+	else if (segments[unique_name].type == VARCHAR) {
+		char* line = (char*)segments[unique_name].value;
+		for (size_t i = 0; i < strlen(line); i++)
+		{
+			dir[i] = line[i];
+		}
+	}
+	
+	FILE* data_file;
+	data_file = fopen(dir, "w");
+	char line[64];
+	for (size_t i = 0; i < strlen(dir); i++)
+	{
+		line[i] = dir[i];
+	}
+	base->selected_record = sv_from_cstr(line);
+	size_t index = 0;
+	while (index < segment_size) {
+		if (segments[index].type == INT) {
+			for (size_t i = 0; i < segments[index].name.count; i++)
+			{
+				fputc(segments[index].name.data[i], data_file);
+			}fputc(':', data_file);
+
+			char line[64];
+			int result = (int)segments[index].value;
+			citoa(result, line, 10);
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], data_file);
+			}fputc('\n', data_file);
+		}
+		else if (segments[index].type == VARCHAR) {
+			for (size_t i = 0; i < segments[index].name.count; i++)
+			{
+				fputc(segments[index].name.data[i], data_file);
+			}fputc(':', data_file);
+
+			char* line = (char*)segments[index].value;
+
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], data_file);
+			}fputc('\n', data_file);
+			free(segments[index].value);
+		}
+		index++;
+	}
+
+	fclose(data_file);
+
+	chdir("../..");
 }
 
-void translate_script_to_binary(String_View src,Base *base)
+String_View unique;
+
+void translate_script_to_binary(String_View src,Base *base, String_View* sv)
 {
 	while (src.count > 0) {
 		String_View line = sv_trim(sv_chop_by_delim(&src, ' '));
-
+		
+		
 		if (sv_eq(line, sv_from_cstr("CREATE"))) {
 			line = sv_trim(sv_chop_by_delim(&src, ' '));
 			if (sv_eq(line, sv_from_cstr("TABLE"))) {
-				create_table(src);
+				create_table(&src);
 			}
 			else {
 				fprintf(stderr, "Error: HAVE TO BE TABLE SYNTAX AFTER CREATE!!!\n");
@@ -567,7 +733,7 @@ void translate_script_to_binary(String_View src,Base *base)
 		else if (sv_eq(line, sv_from_cstr("INSERT"))) {
 			line = sv_trim(sv_chop_by_delim(&src, ' '));
 			if (sv_eq(line, sv_from_cstr("INTO"))) {
-				create_record_table(src);
+				create_record_table(&src);
 			}
 			else {
 				fprintf(stderr, "Error: HAVE TO BE TABLE SYNTAX AFTER INSERT!!!\n");
@@ -575,11 +741,13 @@ void translate_script_to_binary(String_View src,Base *base)
 			}
 		}
 		else if (sv_eq(line, sv_from_cstr("SELECT"))) {
-			select_item_from_table(src,base);
+			select_item_from_table(&src,base,sv);
 		}
 		else if (sv_eq(line, sv_from_cstr("UPDATE"))) {
-			update_segment(src,base);
+			update_segment(&src,base);
 		}
+
+		base->selected_record = *sv;
 	}
 }
 
