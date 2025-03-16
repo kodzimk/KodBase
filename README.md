@@ -8,7 +8,7 @@ c minidatabase following rdbms rules
 
 # Short Explanation
 
-This minidatabase are storing data on storage with folders.<br>
+This MiniDatabase named 'kodebase' are storing data on storage with folders.<br>
 Each folder is one form or how we call tables.<br>
 Using script .kb we can manipulate with database.<br>
 
