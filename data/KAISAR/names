@@ -1,0 +1,3 @@
+age INT UNIQUE
+name VARCHAR
+height INT

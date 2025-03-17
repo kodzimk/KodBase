@@ -1,3 +1,0 @@
-INT UNIQUE age
-VARCHAR name
-INT height
