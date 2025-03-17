@@ -1,5 +1,5 @@
 CREATE TABLE KAISAR(
-     age INT UNIQUE,
-     name VARCHAR,
-     height INT,
+     INT UNIQUE age,
+     VARCHAR name,
+     INT height,
 );
