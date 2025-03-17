@@ -31,21 +31,22 @@ char* citoa(int num, char* str, int base);
 String_View slurp_file(const char* file_path);
 
 typedef enum {
-	NONE,
+	NONE = 0,
 	INT,
 	VARCHAR,
 }Data_Type;
-
 
 typedef struct {
 	String_View selected_record;
 	String_View selected_form_name;
 }Base;
 
+char unique[64];
 Base base = { 0 };
 
 void create_table(String_View *src);
 void create_record_table(String_View *src);
+void delete_table(String_View* src, Base* base);
 void set_cstr_from_sv(char* str, String_View sv, size_t blank);
 void update_segment(String_View* src, Base* base, char name[64]);
 void select_item_from_table(String_View *src, Base* base, char name[64]);
@@ -165,7 +166,7 @@ String_View slurp_file(const char* file_path)
 	};
 }
 
-void create_table(String_View *src) {
+void create_table(String_View* src) {
 	String_View table_name = sv_trim(sv_chop_by_delim(src, '('));
 
 	if (table_name.count > src->count) {
@@ -241,11 +242,11 @@ void create_table(String_View *src) {
 		String_View type = sv_trim(sv_chop_by_delim(&member_type, ' '));
 		member_type = sv_trim(member_type);
 
-		for (size_t i = 0; i < type.count; i++){
-				fputc(type.data[i], fptr);
+		for (size_t i = 0; i < type.count; i++) {
+			fputc(type.data[i], fptr);
 		}fputc(' ', fptr);
 
-	    if (sv_eq(member_type, sv_from_cstr("UNIQUE"))) {
+		if (sv_eq(member_type, sv_from_cstr("UNIQUE"))) {
 			if (unique_has) {
 				fprintf(stderr, "Error: Cant be two unique members!!!\n");
 				exit(1);
@@ -296,7 +297,7 @@ void create_record_table(String_View *src)
 		exit(1);
 	}
 	else {
-		chdir("data");
+		cd("data");
 		FILE* fptr;
 		fptr = fopen("forms.txt", "r");
 
@@ -341,7 +342,7 @@ void create_record_table(String_View *src)
 	char dir[32];
 
 	set_cstr_from_sv(dir, table_name, 0);
-	chdir(dir);
+	cd(dir);
 
 	String_View name = slurp_file("names.txt");
 	char names[12][64];
@@ -465,7 +466,7 @@ void create_record_table(String_View *src)
 	
 	fclose(data_file);
 
-	chdir("../..");
+	cd("../..");
 }
 
 void select_item_from_table(String_View *src,Base *base,char name[64])
@@ -486,7 +487,7 @@ void select_item_from_table(String_View *src,Base *base,char name[64])
 	}
 	form_name = sv_trim(sv_chop_by_delim(src, '\n'));
      
-	chdir("data/");
+	cd("data/");
 	FILE* fptr;
 	fptr = fopen("forms.txt", "r");
 	if (fptr == NULL) {
@@ -524,7 +525,7 @@ void select_item_from_table(String_View *src,Base *base,char name[64])
 
 	char dir[32];
 	set_cstr_from_sv(dir, form_name, 0);
-	chdir(dir);
+	cd(dir);
 
 	memset(dir, 0, sizeof dir);
 	set_cstr_from_sv(dir, sv, 0);
@@ -539,7 +540,7 @@ void select_item_from_table(String_View *src,Base *base,char name[64])
 	set_cstr_from_sv(name, sv, 0);
 	fclose(fptr);
 
-	chdir("../..");
+	cd("../..");
 }
 
 void update_segment(String_View *src, Base* base, char selected_record_name[64])
@@ -551,10 +552,10 @@ void update_segment(String_View *src, Base* base, char selected_record_name[64])
 		fprintf(stderr, "Error: There is no record or form name!!!\n");
 		exit(1);
 	}
-	chdir("data");
+	cd("data");
 	char dir[32];
 	set_cstr_from_sv(dir, base->selected_form_name, 0);
-	chdir(dir);
+	cd(dir);
 	memset(dir, 0, sizeof dir);
 
 	typedef struct {
@@ -706,10 +707,79 @@ void update_segment(String_View *src, Base* base, char selected_record_name[64])
 	}
 	fclose(data_file);
 
-	chdir("../..");
+	cd("../..");
 }
 
-char unique[64];
+void delete_table(String_View* src, Base* base)
+{
+	*src = sv_trim(*src);
+	cd("data/");
+	FILE* fptr;
+	fptr = fopen("forms.txt", "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: There is no form with that name!!!\n");
+		exit(1);
+	}
+
+	size_t cur = 0;
+	size_t index = 0;
+	typedef struct {
+		char name[64];
+		size_t size;
+	}Name;
+	Name names[6];
+	char line[64];
+	char ch;
+	bool form_have = false;
+
+	while ((ch = fgetc(fptr)) != EOF) {
+		line[cur++] = ch;
+
+		if (ch == '\n') {
+			String_View name = sv_from_cstr(line);
+			if (sv_eq(*src, name)) {
+				form_have = true;
+			}
+			else
+			{
+				set_cstr_from_sv(names[index].name, name, 0);
+				names[index].size = name.count;
+				index++;
+			}
+
+			memset(line, 0, sizeof line);
+			cur = 0;
+		}
+	}
+	if (!form_have) {
+		fprintf(stderr, "There is not form like that!!!: %s\n", src->data);
+		exit(1);
+	}
+
+	fclose(fptr);
+
+	fptr = fopen("forms.txt", "w");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: There is no form with that name!!!\n");
+		exit(1);
+	}
+
+	cur = 0;
+	while (index > cur) {
+		for (size_t i = 0; i < names[cur].size; i++)
+		{
+			fputc(names[cur].name[i], fptr);
+		}fputc("\n", fptr);
+		cur++;
+	}
+
+	char del[64] = "rm -rf ";
+	set_cstr_from_sv(del, *src, 7);
+	system(del);
+	if (sv_eq(base->selected_form_name,*src)){
+		base->selected_form_name = (String_View){ .count = 0,.data = NULL };
+	}
+}
 
 void translate_script_to_binary(String_View src,Base *base, char sv[64])
 {
@@ -741,6 +811,15 @@ void translate_script_to_binary(String_View src,Base *base, char sv[64])
 		}
 		else if (sv_eq(line, sv_from_cstr("UPDATE"))) {
 			update_segment(&src,base,sv);
+		}
+		else if (sv_eq(line, sv_from_cstr("DELETE"))) {
+			line = sv_trim(sv_chop_by_delim(&src, '\n'));
+	/*		if (line.count > 2) {
+				delete_record(&line,base,sv);
+			}
+			else {*/
+				delete_table(&line, base);
+			
 		}
 
 		base->selected_record = sv_from_cstr(sv);

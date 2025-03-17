@@ -1,2 +1,0 @@
-INT UNIQUE human_id
-VARCHAR age
