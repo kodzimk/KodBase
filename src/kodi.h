@@ -38,7 +38,7 @@ typedef enum {
 }Data_Type;
 
 typedef struct {
-	String_View selected_record;
+	char selected_record[64];
 	String_View selected_form_name;
 }Base;
 
@@ -52,6 +52,7 @@ Base base = { 0 };
 
 void create_table(String_View *src);
 void create_record(String_View* src);
+void select_record(String_View* src, Base* base);
 void set_cstr_from_sv(char* str, String_View sv, size_t blank);
 void translate_script_to_binary(String_View src,Base *base);
 
@@ -244,8 +245,8 @@ void create_record(String_View* src)
 	memset(dir, 0, sizeof dir);
 
 	Members members[KB_RECORD_MAX_COUNT];
-	size_t members_size = 0;
-	size_t unique_member = -1;
+	int members_size = 0;
+	int unique_member = -1;
 
 	String_View member_src = slurp_file("names");
 	String_View record_src = sv_trim(sv_chop_by_delim(src, ')'));
@@ -272,7 +273,7 @@ void create_record(String_View* src)
 
 		String_View record_data = sv_trim(sv_chop_by_delim(&record_src, ','));
 		if (isdigit(*record_data.data)) {
-			members[members_size].value = (int)sv_to_u64(record_data);
+			members[members_size].value = (void*)sv_to_u64(record_data);
 		}
 		else if (*record_data.data == '"') {
 			record_data.count -= 1;
@@ -308,31 +309,181 @@ void create_record(String_View* src)
 
 	fptr = fopen(dir, "w");
 
-	size_t index = 0;
+	int index = 0;
 	while (members_size > index) {
 		fwrite(members[index].name.data, sizeof(char),
 			   members[index].name.count, fptr);
 		fprintf(fptr, ": ");
 
 		if (members[index].type == VARCHAR) {
-			char* line = (char*)members[index].value;
-			printf("sdads\n");
-			for (size_t i = 0; i < strlen(line); i++)
-			{
-				fputc(line[i], fptr);
-			}fputc('\n', fptr);
+			fwrite(members[index].value, sizeof(char),
+				strlen((char*)members[index].value), fptr);
+			fprintf(fptr, "\n");
 			free(members[index].value);
 		}
 		else {
 			char line[64];
-			int result = (int)members[index].value;
+			int result = (uintptr_t)members[index].value;
 			citoa(result, line, 10);
 			for (size_t i = 0; i < strlen(line); i++)
 			{
 				fputc(line[i], fptr);
 			}fputc('\n', fptr);
 		}
+		index += 1;
+	}
 
+	fclose(fptr);
+}
+
+void select_record(String_View* src, Base* base)
+{
+	String_View unique_member = sv_trim(sv_chop_by_delim(src, ' '));
+	String_View form_name = sv_trim(sv_chop_by_delim(src, ' '));
+	if (!sv_eq(form_name, sv_from_cstr("FROM"))) {
+		fprintf(stderr, "Error: HAVE TO BE 'FORM' !!!\n");
+		exit(1);
+	}
+
+	form_name = sv_trim(sv_chop_by_delim(src, '\n'));
+	base->selected_form_name = form_name;
+	set_cstr_from_sv(base->selected_record, unique_member, 0);
+}
+
+void update_record(String_View* src, Base* base)
+{
+	String_View updated_member = sv_trim(sv_chop_by_delim(src, ' '));
+	String_View updated_value = sv_trim(sv_chop_by_delim(src, '\n'));
+
+	cd("data");
+	FILE* fptr;
+	fptr = fopen("forms", "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: there is no 'forms' at all\n");
+		exit(1);
+	}
+	if (!check_for_form(base->selected_form_name)) {
+		fprintf(stderr, "Error: there is no form with name: %s\n", base->selected_form_name.data);
+		fclose(fptr);
+		exit(1);
+	}
+	fclose(fptr);
+
+	char dir[64];
+	set_cstr_from_sv(dir, base->selected_form_name, 0);
+	cd(dir);
+	memset(dir, 0, sizeof dir);
+
+	Members members[KB_RECORD_MAX_COUNT];
+	size_t members_size = 0;
+	size_t unique_member = -1;
+
+	String_View member_src = slurp_file("names");
+	String_View record_src = slurp_file(base->selected_record);
+	set_cstr_from_sv(dir, (String_View) { .count = strlen(base->selected_record), .data = base->selected_record }, 0);
+
+	while (member_src.count > 0) {
+		String_View member = sv_trim(sv_chop_by_delim(&member_src, ' '));
+
+		if (sv_eq(member, sv_from_cstr("INT"))) {
+			members[members_size].type = INT;
+		}
+		else if (sv_eq(member, sv_from_cstr("VARCHAR"))) {
+			members[members_size].type = VARCHAR;
+		}
+
+		member = sv_trim(sv_chop_by_delim(&member_src, '\n'));
+		String_View unique = sv_trim(sv_chop_by_delim(&member, ' '));
+		if (sv_eq(unique, sv_from_cstr("UNIQUE"))) {
+			unique_member = members_size;
+			members[members_size].name = (String_View){ .count = member.count,.data = member.data };
+		}
+		else {
+			members[members_size].name = (String_View){ .count = unique.count,.data = unique.data };
+		}
+
+		String_View record_data = sv_trim(sv_chop_by_delim(&record_src, ':'));
+		if (sv_eq(record_data, updated_member)) {
+			sv_trim(sv_chop_by_delim(&record_src, '\n'));
+
+			if (isdigit(*updated_value.data)) {
+				members[members_size].value = (void*)sv_to_u64(updated_value);
+				if (unique_member == members_size) {
+				 citoa((int)sv_to_u64(updated_value), base->selected_record, 10);
+				}
+			}
+			else if (*updated_value.data == '"') {
+				updated_value.count -= 1;
+				updated_value.data += 1;
+				char* line = (char*)malloc(sizeof(char) * 12);
+
+				for (size_t i = 0; i < updated_value.count - 1; i++)
+				{
+					line[i] = updated_value.data[i];
+				}
+				members[members_size].value = line;
+				if (unique_member == members_size) {
+					set_cstr_from_sv(base->selected_record, (String_View) { .count = strlen(line), .data = line }, 0);
+				}
+			}
+
+			members_size += 1;
+			continue;
+		}
+
+		record_data = sv_trim(sv_chop_by_delim(&record_src, '\n'));
+		if (isdigit(*record_data.data)) {
+			members[members_size].value = (void*)sv_to_u64(record_data);
+			if (unique_member == members_size) {
+				citoa((int)sv_to_u64(record_data), base->selected_record, 10);
+			}
+		}
+		else if (isalpha(*record_data.data)) {
+			char* line = (char*)malloc(sizeof(char) * 12);
+
+			for (size_t i = 0; i < record_data.count; i++)
+			{
+				line[i] = record_data.data[i];
+			}
+			members[members_size].value = line;
+			if (unique_member == members_size) {
+				set_cstr_from_sv(base->selected_record, (String_View) { .count = strlen(line), .data = line }, 0);
+			}
+		}
+		else {
+			fprintf(stderr, "Error: incorrect type or not similar data type\n");
+			exit(1);
+		}
+		members_size += 1;
+	}
+
+	char del[32] = "rm ";
+	set_cstr_from_sv(del, (String_View) { .count = strlen(dir), .data = dir }, 3);
+	system(del);
+
+	fptr = fopen(base->selected_record, "w");
+
+	size_t index = 0;
+	while (members_size > index) {
+		fwrite(members[index].name.data, sizeof(char),
+			members[index].name.count, fptr);
+		fprintf(fptr, ": ");
+
+		if (members[index].type == VARCHAR) {
+			fwrite(members[index].value, sizeof(char),
+				strlen((char*)members[index].value), fptr);
+			fprintf(fptr, "\n");
+			free(members[index].value);
+		}
+		else {
+			char line[64];
+			int result = (uintptr_t)members[index].value;
+			citoa(result, line, 10);
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], fptr);
+			}fputc('\n', fptr);
+		}
 		index += 1;
 	}
 
@@ -343,7 +494,6 @@ void translate_script_to_binary(String_View src,Base *base)
 {
 	while (src.count > 0) {
 		String_View line = sv_trim(sv_chop_by_delim(&src, ' '));
-		
 		if (sv_eq(line, sv_from_cstr("CREATE"))) {
 			line = sv_trim(sv_chop_by_delim(&src, ' '));
 			if (sv_eq(line, sv_from_cstr("TABLE"))) {
@@ -353,6 +503,7 @@ void translate_script_to_binary(String_View src,Base *base)
 				fprintf(stderr, "Error: HAVE TO BE 'TABLE' SYNTAX AFTER 'CREATE'!!!\n");
 				exit(1);
 			}
+			cd("../..");
 		}
 		if (sv_eq(line, sv_from_cstr("INSERT"))) {
 			line = sv_trim(sv_chop_by_delim(&src, ' '));
@@ -363,7 +514,23 @@ void translate_script_to_binary(String_View src,Base *base)
 				fprintf(stderr, "Error: HAVE TO BE 'INTO' SYNTAX AFTER 'INSERT'!!!\n");
 				exit(1);
 			}
+			cd("../..");
 		}
+		if (sv_eq(line, sv_from_cstr("SELECT"))) {
+			line = sv_trim(sv_chop_by_delim(&src, ' '));
+			if (sv_eq(line, sv_from_cstr("UNIQUE"))) {
+				select_record(&src,base);
+			}
+			else {
+				fprintf(stderr, "Error: HAVE TO BE 'UNIQUE' SYNTAX AFTER 'SELECT'!!!\n");
+				exit(1);
+			}
+		}
+		if (sv_eq(line, sv_from_cstr("UPDATE"))) {
+			update_record(&src, base);
+			cd("../..");
+		}
+
 	}
 }
 
