@@ -260,12 +260,15 @@ void create_record(String_View* src)
 		}
 
 		member = sv_trim(sv_chop_by_delim(&member_src, '\n'));
-		if (sv_eq(member, sv_from_cstr("UNIQUE"))) {
+		String_View unique = sv_trim(sv_chop_by_delim(&member, ' '));
+		if (sv_eq(unique, sv_from_cstr("UNIQUE"))) {
 			unique_member = members_size;
-			member = sv_trim(sv_chop_by_delim(&member_src, '\n'));
+			members[members_size].name = (String_View){ .count = member.count,.data = member.data };
+		}
+		else {
+		members[members_size].name = (String_View){ .count = unique.count,.data = unique.data };
 		}
         
-		members[members_size].name = member;
 
 		String_View record_data = sv_trim(sv_chop_by_delim(&record_src, ','));
 		if (isdigit(*record_data.data)) {
@@ -311,12 +314,24 @@ void create_record(String_View* src)
 			   members[index].name.count, fptr);
 		fprintf(fptr, ": ");
 
-		if (members[members_size].type == VARCHAR) {
-			fwrite(members[index].value, sizeof(char),
-				3, fptr);
+		if (members[index].type == VARCHAR) {
+			char* line = (char*)members[index].value;
+			printf("sdads\n");
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], fptr);
+			}fputc('\n', fptr);
 			free(members[index].value);
 		}
-		fprintf(fptr, "\n");
+		else {
+			char line[64];
+			int result = (int)members[index].value;
+			citoa(result, line, 10);
+			for (size_t i = 0; i < strlen(line); i++)
+			{
+				fputc(line[i], fptr);
+			}fputc('\n', fptr);
+		}
 
 		index += 1;
 	}
