@@ -1,4 +1,4 @@
-CREATE TABLE KAISAR(
+CREATE TABLE NIGER(
      INT UNIQUE age,
      VARCHAR name,
      INT height,

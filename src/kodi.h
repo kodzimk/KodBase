@@ -192,7 +192,7 @@ void create_table(String_View* src) {
 	if (fptr == NULL) {
 		fptr = fopen("forms", "w");
 	}
-	if (!check_for_form(table_name))
+	else if (check_for_form(table_name))
 	{
 		fprintf(stderr, "Error: there is already form with name: %s\n", table_name.data);
 		fclose(fptr);
@@ -490,6 +490,80 @@ void update_record(String_View* src, Base* base)
 	fclose(fptr);
 }
 
+void delete_record(String_View* src, Base* base)
+{
+	String_View unique_member = sv_trim(sv_chop_by_delim(src, ' '));
+	String_View form_name = sv_trim(sv_chop_by_delim(src, ' '));
+	if (!sv_eq(form_name, sv_from_cstr("FROM"))) {
+		fprintf(stderr, "Error: HAVE TO BE 'FROM' !!!\n");
+		exit(1);
+	}
+	form_name = sv_trim(sv_chop_by_delim(src, '\n'));
+
+	cd("data");
+	FILE* fptr;
+	fptr = fopen("forms", "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: there is no 'forms' at all\n");
+		exit(1);
+	}
+	if (!check_for_form(form_name)) {
+		fprintf(stderr, "Error: there is no form with name: %s\n", form_name.data);
+		fclose(fptr);
+		exit(1);
+	}
+	fclose(fptr);
+
+	char dir[64];
+	set_cstr_from_sv(dir, form_name, 0);
+	cd(dir);
+	memset(dir, 0, sizeof dir);
+
+	set_cstr_from_sv(dir, unique_member, 0);
+
+	fptr = fopen(dir, "r");
+	if (fptr == NULL) {
+		fprintf(stderr, "Error: there is no 'record' at all\n");
+		exit(1);
+	}
+	fclose(fptr);
+
+	char del[32] = "rm ";
+	set_cstr_from_sv(del, unique_member, 3);
+	system(del);
+
+	if (sv_eq(unique_member, (String_View) { .count = strlen(base->selected_record), .data = base->selected_record })) {
+		memset(base->selected_record, 0, sizeof base->selected_record);
+	}
+
+}
+
+void delete_form(String_View* src, Base* base)
+{
+	String_View form_name = sv_trim(sv_chop_by_delim(src, '\n'));
+
+	cd("data");
+	String_View forms = slurp_file("forms");
+	FILE* fptr = fopen("forms", "w");
+
+	while (forms.count > 0) {
+		String_View form = sv_trim(sv_chop_by_delim(&forms, '\n'));
+		if (!sv_eq(form, form_name)) {
+			char temp[64];
+			set_cstr_from_sv(temp, form, 0);
+			fwrite(temp, sizeof(char), form.count, fptr);
+		}
+	}fclose(fptr);
+
+	char del[32] = "rm -rf ";
+	set_cstr_from_sv(del, form_name, 7);
+	system(del);
+
+	if (sv_eq(form_name, base->selected_form_name)) {
+		base->selected_form_name = (String_View){ .count = 0,.data = "" };
+	}
+}
+
 void translate_script_to_binary(String_View src,Base *base)
 {
 	while (src.count > 0) {
@@ -530,7 +604,18 @@ void translate_script_to_binary(String_View src,Base *base)
 			update_record(&src, base);
 			cd("../..");
 		}
-
+		if (sv_eq(line, sv_from_cstr("DELETE"))) {
+			line = sv_trim(sv_chop_by_delim(&src, '\n'));
+			String_View temp = sv_trim(sv_chop_by_delim(&line, ' '));
+			if (sv_eq(temp, sv_from_cstr("UNIQUE"))) {
+				delete_record(&line, base);
+			    cd("../..");
+			}
+			else {
+				delete_form(&temp, base);
+				cd("..");
+			}
+		}
 	}
 }
 
